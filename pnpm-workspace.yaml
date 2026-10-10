@@ -1,0 +1,9 @@
+# This directory is its own workspace root: the DSH host imports it through a
+# link: junction, and Node's ESM resolver keeps the literal importer path, so
+# transitive dependencies must sit in the flat top-level node_modules
+# (pnpm's default isolated store hides them from that lookup).
+nodeLinker: hoisted
+
+# No packages are managed here; the field only anchors this root.
+packages:
+  - .

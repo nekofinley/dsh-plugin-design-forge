@@ -1,0 +1,15 @@
+# The dsh-plugin-design-forge bundle patch.
+#
+# One effect, fully reversible by disabling this bundle: insert the
+# design-forge plugin, which registers the design_capture / design_library
+# agent tools and (config permitting) the "check the design library first"
+# system-prompt section.
+#
+# Config fields are optional; every key falls back to the plugin's schema
+# defaults. See lib/index.js DEFAULT_CONFIG for the full list.
+
+- insert:
+    - id: design-forge
+      name: dsh-plugin-design-forge
+      config:
+        promptSection: true

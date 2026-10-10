@@ -1,0 +1,28 @@
+{
+  "name": "dsh-plugin-design-forge",
+  "description": "DeepSeek Harness design library: design_capture scrapes a website's real design (palette, typography scale, spacing, radii, shadows, gradients, CSS custom-property tokens) into a persistent local library, design_library lists/searches/exports it as ready-to-paste tokens.css or a design spec, and a system-prompt section makes agents check the library first whenever they build websites, app UIs, or document layouts.",
+  "version": "1.0.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": [
+        "./cordis.patch.yml"
+      ]
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/cosmokit": "~1.8.5",
+    "@deepseek-ai/schemastery": "~3.18.4"
+  }
+}
