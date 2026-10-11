@@ -10,9 +10,21 @@ English summary below.
 |---|---|
 | `design_capture` | 抓取一个网站（走 Harness 的 `ctx.web` 通道，自动继承你配置的 fetch provider —— 包括 SOCKS 代理路由），解析页面内联样式 + 全部可达样式表（含一级 `@import`），蒸馏出：调色板（含使用频次与明暗分类）、字体族与完整 font stack、字号阶梯、字重、行高、字距、间距节奏、圆角、阴影、渐变、动效时长与缓动、断点、容器宽度、`@font-face`，以及站点自己的 CSS 自定义属性 token（自动区分 light / dark 主题）。结果存为一个 JSON 条目 + 一份可直接粘贴的 `tokens.css`。 |
 | `design_library` | 管理设计库：`list`（总览每条设计的调色板/字体/阶梯）、`search`（按 id/名称/颜色/字体检索）、`get`（完整分析）、`export`（`tokens` = tokens.css、`spec` = Markdown 设计规范、`json` = 原始条目）、`delete`。 |
-| 系统提示注入 | 一个 guidance section 教会每个 Agent：**做网站、应用界面、仪表盘、邮件、海报、幻灯片、文档排版之前，先查设计库**，命中则复用该设计的 token 作为设计系统（并注明来源）；用户分享/称赞某网站时，主动建议或直接 `design_capture` 收录。库为空时建议先收录 2–3 个喜欢的网站。 |
+| `design_discover` | **一次调用完成「搜索 → 筛选 → 批量收录」**：按 query 走 Harness 的搜索通道，过滤掉平台/聚合站（YouTube、GitHub、Dribbble、知乎…）、文档与子页面、图片与 PDF 等资源、以及同一域名的重复项，优先落地页（首页与浅层路径），然后逐个抓取入库，返回每个站点的调色板/字体/字阶/圆角/token 数量摘要。用 `urls` 可跳过搜索直接批量收录已知站点。 |
+| 系统提示注入 | 一个 guidance section 教会每个 Agent：**做网站、应用界面、仪表盘、邮件、海报、幻灯片、文档排版之前，先查设计库**，命中则复用该设计的 token 作为设计系统（并注明来源）；库为空、或没有匹配目标气质的条目时，主动 `design_discover` 去搜集参考站；用户分享/称赞某网站时，主动建议或直接 `design_capture` 收录。 |
 
-这就是"自动用上"的实现方式：不是替换你的指令，而是让每一次 UI/排版任务开始前，Agent 都知道本地有一套可复用的真实设计系统。
+这就是"自动用上"的实现方式：不是替换你的指令，而是让每一次 UI/排版任务开始前，Agent 都知道本地有一套可复用的真实设计系统；不够用时，它还会自己去网上找参考并沉淀下来。
+
+### 三个工具怎么配合
+
+```
+design_discover { query: "dark developer tool landing page", limit: 3 }   # 库里没有匹配风格 → 主动找参考并收录
+design_library  { action: "list" }                                       # 看看现在有什么
+design_library  { action: "export", id: "cursor", format: "tokens" }     # 取出可直接粘贴的 CSS 变量
+design_capture  { url: "https://example.com", notes: "喜欢它的留白与字重" }  # 收录你指定的站点
+```
+
+抓取结果只包含设计语言（token），**不会**复制 Logo、图片或正文；`design_discover` 的候选过滤遵循同一原则 —— 只挑能用 CSS 表达的设计。
 
 ## 存储位置
 
@@ -73,6 +85,7 @@ A DSH bundle that captures the *real* design of excellent websites into a persis
 
 - **`design_capture`** — fetches a URL through the harness `ctx.web` seam (so the configured fetch provider, including the SOCKS proxy router, applies), parses inline styles plus every reachable stylesheet (first-level `@import` included), and distills: frequency-ranked palette (with luminance classes), font families with full stacks, type scale, weights, line heights, letter spacing, spacing rhythm, radii, shadows, gradients, motion durations/easings, media breakpoints, container widths, `@font-face` declarations, and the site's own CSS custom properties (light/dark separated by `[data-theme="dark"]`-style selectors and `prefers-color-scheme`). Stores one JSON entry plus a ready-to-paste `tokens.css`.
 - **`design_library`** — `list` / `search` / `get` / `delete` / `export` (`tokens` CSS variables, `spec` Markdown design document, `json` raw).
-- **System-prompt section** (order 2155) — instructs every agent to check the library *before* building websites, app UIs, dashboards, emails, posters, decks, or document typography, reuse the closest captured design's tokens, and to capture sites the user praises.
+- **`design_discover`** — one call does search → filter → batch capture: runs a web search through the harness search provider, drops platforms/aggregators, docs, assets, listing pages and duplicate hosts, prefers landing pages, captures every remaining site into the library, and returns a per-site digest (palette, fonts, type scale, radii, token counts). Pass `urls` to skip search and batch-capture known sites.
+- **System-prompt section** (order 2155) — instructs every agent to check the library *before* building websites, app UIs, dashboards, emails, posters, decks, or document typography, to reuse the closest captured design's tokens, to capture sites the user praises, and to run `design_discover` when the library holds nothing close to the target.
 
 Storage: `~/.dsh/storages/design-forge/` (`index.json` + `entries/*.json`, index rebuilt from files on demand). Zero runtime dependencies beyond `@deepseek-ai/schemastery` (Config schema); all analysis is a dependency-free brace/paren-aware CSS walker. Static CSS only — hover-only, canvas, and JS-injected styles are out of scope.

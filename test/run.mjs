@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
-import { apply } from '../lib/index.js';
+import { apply, __internals } from '../lib/index.js';
 
 // ---------------------------------------------------------------------------
 // Fixture: a crafted page with a rich design system
@@ -125,6 +125,19 @@ code, pre { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 14
 // A CSS served with a non-text content type (must be skipped gracefully).
 FIXTURES.set('https://design.test/assets/broken.css', 'ignored');
 
+// A second, unrelated site: used by the design_discover tests.
+FIXTURES.set('https://acme-two.test/', `<!doctype html>
+<html lang="en">
+<head><title>Two</title>
+<style>
+  :root { --brand: #ff5500; }
+  body { background: #0b0b0b; color: #fafafa; font-family: Georgia, serif; font-size: 15px; }
+  .panel { border-radius: 10px; padding: 12px; box-shadow: 0 2px 8px #00000080; }
+</style>
+</head>
+<body><h1>Two</h1></body>
+</html>`);
+
 // ---------------------------------------------------------------------------
 // Fake ctx + ordered check harness
 // ---------------------------------------------------------------------------
@@ -146,18 +159,33 @@ let webFetch = async (request) => {
   return { url, statusCode: 200, body: { kind, content } };
 };
 
+// Replaced per-test by the design_discover checks; empty by default.
+let webSearch = async () => ({ truncated: false, sources: [] });
+const searchLog = [];
+
 const ctx = {
-  web: { fetch: (request, signal) => webFetch(request, signal) },
+  web: {
+    fetch: (request, signal) => webFetch(request, signal),
+    search: (request, signal) => {
+      searchLog.push(request);
+      return webSearch(request, signal);
+    },
+  },
   systemPrompt: { section: (section) => registered.sections.push(section) },
   tools: { register: (definition) => registered.tools.push(definition) },
 };
 
 const results = [];
+class Skip extends Error {}
 async function check(label, fn) {
   try {
     await fn();
     results.push(`PASS ${label}`);
   } catch (error) {
+    if (error instanceof Skip) {
+      results.push(`SKIP ${label}: ${error.message}`);
+      return;
+    }
     results.push(`FAIL ${label}: ${error.message}`);
     process.exitCode = 1;
   }
@@ -170,16 +198,18 @@ async function check(label, fn) {
 const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'df-test-'));
 apply(ctx, { storeDir });
 
-await check('apply registers two tools', () => {
-  assert.deepEqual(registered.tools.map((t) => t.name).sort(), ['design_capture', 'design_library']);
+await check('apply registers three tools', () => {
+  assert.deepEqual(registered.tools.map((t) => t.name).sort(), ['design_capture', 'design_discover', 'design_library']);
 });
 await check('apply registers prompt section at 2155', () => {
   assert.equal(registered.sections.length, 1);
   assert.equal(registered.sections[0].order, 2155);
   assert.match(registered.sections[0].text, /design_library \{ action: "list" \}/);
+  assert.match(registered.sections[0].text, /design_discover \{ query: "\.\.\." \}/);
 });
 const capture = registered.tools.find((t) => t.name === 'design_capture');
 const library = registered.tools.find((t) => t.name === 'design_library');
+const discover = registered.tools.find((t) => t.name === 'design_discover');
 
 // 2. design_capture end-to-end
 let summary;
@@ -336,6 +366,120 @@ await check('library delete + list empty', async () => {
 await check('library get unknown id errors clearly', async () => {
   await assert.rejects(() => library.execute({ action: 'get', id: 'nope' }, {}), /no entry "nope"/);
 });
+
+// 3b. design_discover — search → filter → batch capture
+await check('rankCandidates drops platforms/assets/docs and keeps one per host', () => {
+  const ranked = __internals.rankCandidates([
+    { url: 'https://www.youtube.com/watch?v=1', title: 'talk' },
+    { url: 'https://github.com/a/b', title: 'repo' },
+    { url: 'https://acme.test/files/whitepaper.pdf', title: 'pdf' },
+    { url: 'https://acme.test/docs/getting-started', title: 'docs' },
+    { url: 'https://acme.test/', title: 'home' },
+    { url: 'https://www.acme.test/?utm_source=news', title: 'home again' },
+    { url: 'https://bravo.test/pricing', title: 'pricing' },
+  ], 5);
+  assert.deepEqual(ranked.map((c) => c.url), ['https://acme.test/', 'https://bravo.test/pricing']);
+  assert.ok(__internals.isNonDesignHost('m.youtube.com'));
+  assert.ok(!__internals.isNonDesignHost('box.com'));
+});
+
+await check('rankCandidates strips tracking params and demotes listing pages', () => {
+  const ranked = __internals.rankCandidates([
+    { url: 'https://shop.test/marketplace/templates/pretty', title: 'template' },
+    { url: 'https://real.test/?_bhlid=deadbeef&utm_source=x&keep=1', title: 'real' },
+  ], 5);
+  assert.deepEqual(ranked.map((c) => c.url), ['https://real.test/?keep=1', 'https://shop.test/marketplace/templates/pretty']);
+});
+
+await check('design_discover searches, filters and captures keepers', async () => {
+  webSearch = async (request) => {
+    assert.equal(request.maxResults, 12, 'default maxResults');
+    return {
+      truncated: false,
+      sources: [
+        { url: 'https://www.youtube.com/watch?v=abc', title: 'A talk' },
+        { url: 'https://design.test/docs/getting-started', title: 'Docs' },
+        { url: 'https://design.test/', title: 'Acme — design system' },
+        { url: 'https://www.design.test/?utm_source=news', title: 'Acme again' },
+        { url: 'https://acme-two.test/', title: 'Two' },
+        { url: 'https://example.com/files/whitepaper.pdf', title: 'PDF' },
+        { url: 'https://github.com/some/repo', title: 'Repo' },
+      ],
+    };
+  };
+  const out = await discover.execute({ query: 'acme design', limit: 2 }, {});
+  assert.equal(out.ok, true);
+  assert.equal(out.searched, true);
+  assert.equal(searchLog.at(-1).query, 'acme design');
+  assert.equal(out.captured.length, 2, JSON.stringify(out.failures));
+  assert.deepEqual(out.captured.map((c) => c.url), ['https://design.test/', 'https://acme-two.test/']);
+  assert.ok(out.captured.every((c) => c.palette.length > 0), 'each digest carries a palette');
+  assert.ok(out.captured.every((c) => c.fonts.length > 0), 'each digest carries fonts');
+  assert.match(out.hint, /acme, acme-two/);
+  assert.equal(out.failures.length, 0);
+  // ids come from the brand name / host label, never the full page title
+  assert.deepEqual(out.captured.map((c) => c.id), ['acme', 'acme-two']);
+});
+
+await check('design_discover entries land in the library with provenance notes', async () => {
+  const out = await library.execute({ action: 'search', query: 'discovered: acme design' }, {});
+  assert.equal(out.total, 2, 'notes record the discovery query');
+});
+
+await check('design_discover captures explicit urls without searching', async () => {
+  const before = searchLog.length;
+  const out = await discover.execute({ urls: ['https://acme-two.test/'], refresh: true }, {});
+  assert.equal(searchLog.length, before, 'no search when urls are given');
+  assert.equal(out.searched, false);
+  assert.equal(out.captured.length, 1);
+  assert.equal(out.captured[0].id, 'acme-two', 'refresh overwrites the existing id');
+});
+
+await check('design_discover records per-site failures and keeps the rest', async () => {
+  webSearch = async () => ({
+    truncated: false,
+    sources: [
+      { url: 'https://missing.test/', title: 'Missing' },
+      { url: 'https://acme-two.test/', title: 'Two' },
+    ],
+  });
+  const out = await discover.execute({ query: 'mixed bag', limit: 2, refresh: true }, {});
+  assert.equal(out.captured.length, 1);
+  assert.equal(out.failures.length, 1);
+  assert.match(out.failures[0].error, /HTTP 404/);
+});
+
+await check('design_discover degrades cleanly when search is unavailable', async () => {
+  webSearch = async () => { throw new Error('WEB_PROVIDER_UNAVAILABLE'); };
+  const out = await discover.execute({ query: 'anything' }, {});
+  assert.equal(out.ok, false);
+  assert.match(out.error, /search failed.*WEB_PROVIDER_UNAVAILABLE/);
+  assert.match(out.hint, /urls/);
+});
+
+await check('design_discover reports when every candidate is filtered out', async () => {
+  webSearch = async () => ({
+    truncated: false,
+    sources: [{ url: 'https://youtube.com/x' }, { url: 'https://x.com/y' }, { url: 'https://a.test/b.pdf' }],
+  });
+  const out = await discover.execute({ query: 'nothing usable' }, {});
+  assert.equal(out.ok, false);
+  assert.match(out.error, /no capture-worthy candidate/);
+});
+
+await check('design_discover needs a query or urls', async () => {
+  await assert.rejects(() => discover.execute({}, {}), /query is required/);
+});
+await check('capture id prefers brand over a long page title', async () => {
+  FIXTURES.set('https://long-title.test/', `<!doctype html>
+<html><head><title>Ora: Issue tracking that is simple, effective and good looking | Ora</title>
+<style>body { color: #222; background: #fff; }</style></head><body>ok</body></html>`);
+  const out = await capture.execute({ url: 'https://long-title.test/' }, {});
+  assert.equal(out.id, 'long-title', `expected the host label, got "${out.id}"`);
+  const withBrand = await capture.execute({ url: 'https://long-title.test/', name: 'Ora', refresh: false }, {});
+  assert.equal(withBrand.id, 'ora', 'an explicit name still wins');
+});
+
 await check('capture without url errors', async () => {
   await assert.rejects(() => capture.execute({}, {}), /url is required/);
 });
@@ -355,8 +499,7 @@ await check('capture error page surfaces status', async () => {
 await check('real HTML file capture (local server)', async () => {
   const htmlPath = 'D:/UserData/Documents/deepseek-harness/default-workspace/dse_wenyan_handbook_sc.html';
   if (!fs.existsSync(htmlPath)) {
-    results.push('SKIP real HTML file (fixture not found)');
-    return;
+    throw new Skip('optional local fixture not found');
   }
   const real = fs.readFileSync(htmlPath, 'utf8');
   const server = http.createServer((req, res) => {
