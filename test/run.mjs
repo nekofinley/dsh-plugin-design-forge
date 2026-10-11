@@ -177,6 +177,20 @@ const ctx = {
 
 const results = [];
 class Skip extends Error {}
+
+/**
+ * Mirrors the harness tool-output contract: an own property whose value is
+ * `undefined` is not lossless JSON and makes the whole call fail.
+ */
+function assertLossless(value, path = 'out') {
+  if (value === undefined) throw new Error(`${path} is undefined (not lossless JSON)`);
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertLossless(item, `${path}[${index}]`));
+  } else if (value && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value)) assertLossless(item, `${path}.${key}`);
+  }
+}
+
 async function check(label, fn) {
   try {
     await fn();
@@ -408,6 +422,7 @@ await check('design_discover searches, filters and captures keepers', async () =
     };
   };
   const out = await discover.execute({ query: 'acme design', limit: 2 }, {});
+  assertLossless(out);
   assert.equal(out.ok, true);
   assert.equal(out.searched, true);
   assert.equal(searchLog.at(-1).query, 'acme design');
@@ -429,6 +444,7 @@ await check('design_discover entries land in the library with provenance notes',
 await check('design_discover captures explicit urls without searching', async () => {
   const before = searchLog.length;
   const out = await discover.execute({ urls: ['https://acme-two.test/'], refresh: true }, {});
+  assertLossless(out, 'urls-branch output');
   assert.equal(searchLog.length, before, 'no search when urls are given');
   assert.equal(out.searched, false);
   assert.equal(out.captured.length, 1);
