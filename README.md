@@ -37,6 +37,19 @@ entries/<id>.json   # 每条设计的完整分析 + tokensCss
 
 `id` 由站点名/域名生成（`acme`、`acme-2` …）；`refresh: true` 可覆盖重抓。
 
+## 示例页面
+
+`examples/` 里有两个用捕获结果搭出来的完整页面（单文件，浏览器直接打开，无需构建）：
+
+| 文件 | 类型 | 设计系统来源 |
+|---|---|---|
+| [`examples/landing-linear.html`](examples/landing-linear.html) | 营销落地页 | `linear`（`design_capture`） |
+| [`examples/console-cursor.html`](examples/console-cursor.html) | 应用界面 / 控制台 | `cursor`（`design_discover` 自动发现并收录） |
+| [`examples/panel-linear.html`](examples/panel-linear.html) | 小组件面板（最小示例） | `linear` |
+
+这三页的设计语言（配色、字阶、圆角、阴影、动效、断点）都取自对应条目，文案与图形原创；
+每个文件顶部的注释写明了复用了哪些 token。详见 [`examples/README.md`](examples/README.md)。
+
 ## 配置（cordis.patch.yml 的 design-forge 行）
 
 | 字段 | 默认 | 说明 |
@@ -77,6 +90,15 @@ pnpm install --store-dir .\.pnpm-store   # pnpm ≥9；依赖仅 schemastery/cos
 - 单张样式表超过上限时按前缀分析并在 `stats.truncatedSheets` 标注。
 - 图片、Logo、正文内容不会被复制 —— 设计库复用的是设计语言（token），不是素材。
 
+## 测试
+
+```bash
+node test/run.mjs          # 42 项检查:解析器、两个抓取工具、发现与过滤、库操作
+node test/debug-pollution.mjs   # 回归工具:在真实样式表上找被解析器污染的值
+```
+
+测试不联网：用一个假的 `ctx.web`（fixture 页面 + 一个本地 HTTP 服务器）驱动真实的 `apply()`。
+
 ---
 
 ## English summary
@@ -87,5 +109,6 @@ A DSH bundle that captures the *real* design of excellent websites into a persis
 - **`design_library`** — `list` / `search` / `get` / `delete` / `export` (`tokens` CSS variables, `spec` Markdown design document, `json` raw).
 - **`design_discover`** — one call does search → filter → batch capture: runs a web search through the harness search provider, drops platforms/aggregators, docs, assets, listing pages and duplicate hosts, prefers landing pages, captures every remaining site into the library, and returns a per-site digest (palette, fonts, type scale, radii, token counts). Pass `urls` to skip search and batch-capture known sites.
 - **System-prompt section** (order 2155) — instructs every agent to check the library *before* building websites, app UIs, dashboards, emails, posters, decks, or document typography, to reuse the closest captured design's tokens, to capture sites the user praises, and to run `design_discover` when the library holds nothing close to the target.
+- **Examples** — `examples/` ships two complete single-file pages built from captures: a marketing landing page (Linear tokens) and an app console (Cursor tokens found by `design_discover`). Open them in a browser; no build step.
 
 Storage: `~/.dsh/storages/design-forge/` (`index.json` + `entries/*.json`, index rebuilt from files on demand). Zero runtime dependencies beyond `@deepseek-ai/schemastery` (Config schema); all analysis is a dependency-free brace/paren-aware CSS walker. Static CSS only — hover-only, canvas, and JS-injected styles are out of scope.

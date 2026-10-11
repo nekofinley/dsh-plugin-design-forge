@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>design-forge 应用示例 — Linear 设计系统</title>
+<!--
+  本页演示 dsh-plugin-design-forge 的完整闭环:
+  design_capture 抓取 linear.app → design_library 导出 tokens → 套用到新界面。
+  只复用设计语言(token),未复制任何 Logo/图片/文案。
+-->
+<style>
+  /* ===== captured from Linear via design_library { action: "export", id: "linear", format: "tokens" } ===== */
+  :root {
+    --color-bg-primary: #08090a;
+    --color-bg-secondary: #1c1c1f;
+    --color-bg-panel: #161718;
+    --color-border-primary: #23252a;
+    --color-text-primary: #f7f8f8;
+    --color-text-secondary: #d0d6e0;
+    --color-text-tertiary: #8a8f98;
+    --color-brand-bg: #5e6ad2;
+    --color-link-primary: #828fff;
+    --radius-8: 8px;
+    --radius-12: 12px;
+    --font-regular: "Inter Variable", "SF Pro Display", -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-monospace: "Berkeley Mono", ui-monospace, "SF Mono", Consolas, monospace;
+    --font-weight-medium: 510;
+    --font-weight-semibold: 590;
+    --shadow-high: 0px 7px 32px #00000059;
+    /* derived by the plugin (chroma-ranked palette, generic fallbacks) */
+    --df-color-2: #f34e52;
+  }
+  [data-theme="light"] {
+    --color-bg-primary: #ffffff;
+    --color-bg-secondary: #f4f5f8;
+    --color-bg-panel: #ffffff;
+    --color-border-primary: #e3e4e8;
+    --color-text-primary: #191b1f;
+    --color-text-secondary: #40454e;
+    --color-text-tertiary: #747a83;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: var(--font-regular);
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 24px;
+    transition: background .2s ease-out, color .2s ease-out;
+  }
+  .panel {
+    width: min(520px, 100%);
+    background: var(--color-bg-panel);
+    border: 1px solid var(--color-border-primary);
+    border-radius: var(--radius-12);
+    box-shadow: var(--shadow-high);
+    overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--color-border-primary);
+  }
+  .panel-head h1 { font-size: 16px; font-weight: var(--font-weight-semibold); margin: 0; letter-spacing: -0.01em; }
+  .badge {
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    color: var(--color-link-primary);
+    background: color-mix(in lch, var(--color-brand-bg), transparent 85%);
+    border: 1px solid color-mix(in lch, var(--color-brand-bg), transparent 60%);
+    border-radius: 9999px;
+    padding: 2px 10px;
+  }
+  .rows { padding: 8px 0; }
+  .row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 20px;
+    transition: background .12s ease-out;
+  }
+  .row:hover { background: #ffffff0d; }
+  .row .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-brand-bg); flex: none; }
+  .row .dot.warn { background: var(--df-color-2); }
+  .row .name { font-weight: var(--font-weight-medium); }
+  .row .meta { color: var(--color-text-tertiary); font-size: 12.8px; margin-left: auto; }
+  .row code {
+    font-family: var(--font-monospace);
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-8);
+    padding: 1px 6px;
+  }
+  .foot {
+    display: flex; gap: 8px; justify-content: flex-end;
+    padding: 14px 20px;
+    border-top: 1px solid var(--color-border-primary);
+  }
+  button {
+    font: inherit;
+    font-weight: var(--font-weight-medium);
+    border-radius: var(--radius-8);
+    border: 1px solid var(--color-border-primary);
+    background: transparent;
+    color: var(--color-text-secondary);
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: background .12s ease-out, color .12s ease-out;
+  }
+  button:hover { background: #ffffff0f; color: var(--color-text-primary); }
+  button.primary { background: var(--color-brand-bg); border-color: transparent; color: #fff; }
+  button.primary:hover { background: var(--color-link-primary); }
+</style>
+</head>
+<body>
+  <main class="panel">
+    <div class="panel-head">
+      <h1>发布任务 · design-forge 演示</h1>
+      <span class="badge">linear tokens</span>
+    </div>
+    <div class="rows">
+      <div class="row"><span class="dot"></span><span class="name">设计库捕获</span><code>design_capture</code><span class="meta">linear.app · 40 stylesheets</span></div>
+      <div class="row"><span class="dot"></span><span class="name">Token 蒸馏</span><code>134 props</code><span class="meta">80 light / 54 dark</span></div>
+      <div class="row"><span class="dot warn"></span><span class="name">本页套用</span><code>tokens.css</code><span class="meta">palette + type + radii</span></div>
+    </div>
+    <div class="foot">
+      <button onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">切换主题</button>
+      <button class="primary">发布</button>
+    </div>
+  </main>
+</body>
+</html>
